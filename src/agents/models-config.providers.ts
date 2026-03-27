@@ -84,42 +84,39 @@ export function normalizeProviders(params: {
       mutated = true;
       normalizedProvider = providerWithConfiguredApiKey;
     }
-
-    // Reverse-lookup: if apiKey looks like a resolved secret value (not an env
-    // var name), check whether it matches the canonical env var for this provider.
-    // This prevents resolveConfigEnvVars()-resolved secrets from being persisted
-    // to models.json as plaintext. (Fixes #38757)
-    const providerWithResolvedEnvApiKey = normalizeResolvedEnvApiKey({
+    const providerWithEnvApiKey = normalizeResolvedEnvApiKey({
       providerKey: normalizedKey,
       provider: normalizedProvider,
       env,
       secretRefManagedProviders: params.secretRefManagedProviders,
     });
-    if (providerWithResolvedEnvApiKey !== normalizedProvider) {
+    if (providerWithEnvApiKey !== normalizedProvider) {
       mutated = true;
-      normalizedProvider = providerWithResolvedEnvApiKey;
+      normalizedProvider = providerWithEnvApiKey;
+    }
+    const finalProvider = normalizeProviderSpecificConfig({
+      providerKey: normalizedKey,
+      provider: normalizedProvider,
+      apiKeyResolver: resolveProviderConfigApiKeyResolver({
+        providerKey: normalizedKey,
+        env,
+        profileApiKey,
+      }),
+      env,
+    });
+    if (finalProvider !== normalizedProvider) {
+      mutated = true;
+      normalizedProvider = finalProvider;
     }
 
-    const providerWithApiKey = resolveMissingProviderApiKey({
+    const explicitProvider = resolveMissingProviderApiKey({
       providerKey: normalizedKey,
       provider: normalizedProvider,
       env,
-      profileApiKey,
-      secretRefManagedProviders: params.secretRefManagedProviders,
-      providerApiKeyResolver: resolveProviderConfigApiKeyResolver(normalizedKey),
     });
-    if (providerWithApiKey !== normalizedProvider) {
+    if (explicitProvider !== normalizedProvider) {
       mutated = true;
-      normalizedProvider = providerWithApiKey;
-    }
-
-    const providerSpecificNormalized = normalizeProviderSpecificConfig(
-      normalizedKey,
-      normalizedProvider,
-    );
-    if (providerSpecificNormalized !== normalizedProvider) {
-      mutated = true;
-      normalizedProvider = providerSpecificNormalized;
+      normalizedProvider = explicitProvider;
     }
 
     const existing = next[normalizedKey];
