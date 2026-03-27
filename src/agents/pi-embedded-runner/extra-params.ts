@@ -39,7 +39,10 @@ import {
   resolveOpenAIServiceTier,
 } from "./openai-stream-wrappers.js";
 import { streamWithPayloadPatch } from "./stream-payload-utils.js";
-import { createXaiFastModeWrapper } from "./xai-stream-wrappers.js";
+import {
+  createXaiFastModeWrapper,
+  createXaiReasoningEffortStripWrapper,
+} from "./xai-stream-wrappers.js";
 
 const defaultProviderRuntimeDeps = {
   prepareProviderExtraParams: prepareProviderExtraParamsRuntime,
@@ -366,6 +369,10 @@ function applyPostPluginStreamWrappers(
   // upstream model-ID heuristics for Gemini 3.1 variants.
   ctx.agent.streamFn = createGoogleThinkingPayloadWrapper(ctx.agent.streamFn, ctx.thinkingLevel);
 
+  if (ctx.provider === "xai") {
+    ctx.agent.streamFn = createXaiReasoningEffortStripWrapper(ctx.agent.streamFn);
+  }
+
   const anthropicFastMode = resolveAnthropicFastMode(ctx.effectiveExtraParams);
   if (anthropicFastMode !== undefined) {
     log.debug(
@@ -508,6 +515,54 @@ export function applyExtraParamsToAgent(
     ...wrapperContext,
     providerWrapperHandled,
   });
+
+  if (typeof effectiveExtraParams?.fastMode === "boolean") {
+    log.debug(
+      `applying MiniMax fast mode=${effectiveExtraParams.fastMode} for ${provider}/${modelId}`,
+    );
+    agent.streamFn = createMinimaxFastModeWrapper(agent.streamFn, effectiveExtraParams.fastMode);
+    log.debug(`applying xAI fast mode=${effectiveExtraParams.fastMode} for ${provider}/${modelId}`);
+    agent.streamFn = createXaiFastModeWrapper(agent.streamFn, effectiveExtraParams.fastMode);
+  }
+
+  const openAIFastMode = resolveOpenAIFastMode(effectiveExtraParams);
+  if (openAIFastMode) {
+    log.debug(`applying OpenAI fast mode for ${provider}/${modelId}`);
+    agent.streamFn = createOpenAIFastModeWrapper(agent.streamFn);
+  }
+
+  const openAIServiceTier = resolveOpenAIServiceTier(effectiveExtraParams);
+  if (openAIServiceTier) {
+    log.debug(`applying OpenAI service_tier=${openAIServiceTier} for ${provider}/${modelId}`);
+    agent.streamFn = createOpenAIServiceTierWrapper(agent.streamFn, openAIServiceTier);
+  }
+
+  // Work around upstream pi-ai hardcoding `store: false` for Responses API.
+  // Force `store=true` for direct OpenAI Responses models and auto-enable
+  // server-side compaction for compatible OpenAI Responses payloads.
+  agent.streamFn = createOpenAIResponsesContextManagementWrapper(
+    agent.streamFn,
+    effectiveExtraParams,
+  );
+
+  const rawParallelToolCalls = resolveAliasedParamValue(
+    [resolvedExtraParams, override],
+    "parallel_tool_calls",
+    "parallelToolCalls",
+  );
+  if (rawParallelToolCalls !== undefined) {
+    if (typeof rawParallelToolCalls === "boolean") {
+      agent.streamFn = createParallelToolCallsWrapper(agent.streamFn, rawParallelToolCalls);
+    } else if (rawParallelToolCalls === null) {
+      log.debug("parallel_tool_calls suppressed by null override, skipping injection");
+    } else {
+      const summary =
+        typeof rawParallelToolCalls === "string"
+          ? rawParallelToolCalls
+          : typeof rawParallelToolCalls;
+      log.warn(`ignoring invalid parallel_tool_calls param: ${summary}`);
+    }
+  }
 
   return { effectiveExtraParams };
 }
