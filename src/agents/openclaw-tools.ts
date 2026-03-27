@@ -27,7 +27,7 @@ import { createSessionsSpawnTool } from "./tools/sessions-spawn-tool.js";
 import { createSessionsYieldTool } from "./tools/sessions-yield-tool.js";
 import { createSubagentsTool } from "./tools/subagents-tool.js";
 import { createTtsTool } from "./tools/tts-tool.js";
-import { createWebFetchTool, createWebSearchTool } from "./tools/web-tools.js";
+import { createWebFetchTool, createWebSearchTool, createXSearchTool } from "./tools/web-tools.js";
 import { resolveWorkspaceRoot } from "./workspace-dir.js";
 
 type OpenClawToolsDeps = {
@@ -145,6 +145,10 @@ export function createOpenClawTools(
     sandboxed: options?.sandboxed,
     runtimeWebSearch: runtimeWebTools?.search,
   });
+  const xSearchTool = createXSearchTool({
+    config: options?.config,
+    runtimeXSearch: runtimeWebTools?.xSearch,
+  });
   const webFetchTool = createWebFetchTool({
     config: options?.config,
     sandboxed: options?.sandboxed,
@@ -241,6 +245,7 @@ export function createOpenClawTools(
       sandboxed: options?.sandboxed,
     }),
     ...(webSearchTool ? [webSearchTool] : []),
+    ...(xSearchTool ? [xSearchTool] : []),
     ...(webFetchTool ? [webFetchTool] : []),
     ...(imageTool ? [imageTool] : []),
     ...(pdfTool ? [pdfTool] : []),
